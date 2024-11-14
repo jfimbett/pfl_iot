@@ -17,22 +17,23 @@ using Printf
 
 @with_kw struct Params
     r::Float64 = 0.04
-    μ₁ :: Float64 = 8.0
-    μ₀ :: Float64 = 0.9*8.0
-    λ :: Float64 = 0.01
-    γ :: Float64 = 0.09
+    μ₁:: Float64 = 8.0
+    μ₀:: Float64 = 0.9*8.0
+    λ:: Float64 = 0.29
+    γ:: Float64 = 0.09
     σ::Float64 = 9.0
-    αₚ::Float64 = 0.02
-    κₚ::Float64 = 1.0
+    αₚ::Float64 = 0.05
+    κₚ::Float64 = 5
     αₐ::Float64 = 0.02
-    κₐ::Float64 = 0.3
+    κₐ::Float64 = 5
 end
 
+params = Params()
 
-function solve_v1(L₁, params::Params; R₁=0.0, return_z = true)
+function solve_v1_base(params::Params; L₁ = 0.0, R₁=0.0, return_z = true)
     @unpack r, μ₁, μ₀, λ, γ, σ, αₚ, κₚ, αₐ, κₐ = params
 
-    Wᵦ = 5*L₁
+    Wᵦ = 5*R₁+5.0
     
     # Define the system of differential equations
     function hjb!(du, u, p, x)
@@ -55,7 +56,7 @@ function solve_v1(L₁, params::Params; R₁=0.0, return_z = true)
 
     w_span = (R₁, Wᵦ)
     n = 100
-    dt = (Wᵦ - R₁) / n
+    
 
     function initial_guess(p,x)
         v = L₁
@@ -64,6 +65,7 @@ function solve_v1(L₁, params::Params; R₁=0.0, return_z = true)
     end
 
 
+    dt = (Wᵦ - R₁) / n
     # Solve the BVP
     bvp = TwoPointBVProblem(hjb!, (bca!, bcb!), initial_guess, w_span, bcresid_prototype = (zeros(1), zeros(2)))
 
@@ -85,7 +87,7 @@ function solve_v1(L₁, params::Params; R₁=0.0, return_z = true)
         (1-αₚ)*v_max - κₚ - v((1-αₐ)*w_max - κₐ)
     else
         # return R 
-        return (1-αₐ)*w_max-κₐ, (1-αₚ)*v_max - κₚ , vs, dvs
+        return (1-αₐ)*w_max-κₐ, (1-αₚ)*v_max - κₚ , vs, dvs, v
     end
     
 end
@@ -137,31 +139,20 @@ function main()
     println("Optimal x found: ", optimal_x)
 
     # solve again with that L and return R
-    R, L, vs, dvs = solve_v1(optimal_x, params, R₁=0.0, return_z=false)
+    R, L, vs, dvs, v = solve_v1(optimal_x, params, R₁=0.0, return_z=false)
     # print the new R 
     println("Optimal R found: ", R)
+    L_s = v(R)
 
-    # iterate until R converges
-    tol = 1e-6
-    last_R = copy(R)
-    last_L = copy(L)
-    for i in 1:1000
-        # solve again with that L and return R
-        R, L, vs, dvs = solve_v1(last_L, params, R₁=last_R, return_z=false)
+    # L before
+    println("Optimal L ", L_s)
 
-        # multiples of 20 to display
-        if i % 20 == 0
-            println("Iteration: ", i, " R: ", R, " L: ", L)
-        end
-        
-        if (abs(R - last_R) < tol) && (abs(L - last_L) < tol)
-            break
-        end
-        last_R = copy(R)
-        last_L = copy(L)
-    end
+    R, L, vs, dvs, v = solve_v1(L_s, params, R₁=R, return_z=false)
 
-    println("Converged R: ", R)
+    # print the new R
+    println("Second iteration: ", R)
+    println("Second iteration: ", L)
+
 end
 
 main()
